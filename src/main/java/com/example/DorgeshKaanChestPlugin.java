@@ -35,7 +35,9 @@ public class DorgeshKaanChestPlugin extends Plugin
 	private static final int LOOTABLE_CHEST_ID = 22681;
 	private static final int LOOTED_CHEST_ID = 22682;
 	private static final int OPENING_CHEST_ID = 22683;
+	private static final int ACTIVE_RANGE_TILES = 12;
 	private static final long HOP_COUNTDOWN_MILLIS = 5500L;
+	private static final long ALL_LOOTED_NOTICE_MILLIS = 3500L;
 	private static final String PICK_LOCK_ATTEMPT_MESSAGE = "You attempt to pick the lock.";
 
 	@Inject
@@ -55,6 +57,9 @@ public class DorgeshKaanChestPlugin extends Plugin
 
 	private final List<ChestState> chestStates = new ArrayList<>();
 	private Instant hopReadyAt;
+	private Instant allLootedNoticeUntil;
+	private boolean inChestArea;
+	private boolean awaitingPostHopChestCheck;
 
 	@Override
 	protected void startUp()
@@ -69,6 +74,9 @@ public class DorgeshKaanChestPlugin extends Plugin
 	{
 		chestStates.clear();
 		hopReadyAt = null;
+		allLootedNoticeUntil = null;
+		inChestArea = false;
+		awaitingPostHopChestCheck = false;
 		overlayManager.remove(overlay);
 		overlayManager.remove(timerOverlay);
 		log.debug("Dorgesh-Kaan chests plugin stopped");
@@ -77,9 +85,21 @@ public class DorgeshKaanChestPlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
+		if (event.getGameState() == GameState.HOPPING)
+		{
+			awaitingPostHopChestCheck = true;
+		}
+		else if (event.getGameState() == GameState.LOGGED_IN)
+		{
+			// Also evaluate chest state after fresh login, not only world hop.
+			awaitingPostHopChestCheck = true;
+		}
+
 		if (event.getGameState() != GameState.LOGGED_IN)
 		{
 			hopReadyAt = null;
+			allLootedNoticeUntil = null;
+			inChestArea = false;
 		}
 	}
 
@@ -90,6 +110,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 		{
 			chestStates.clear();
 			hopReadyAt = null;
+			inChestArea = false;
 			return;
 		}
 
@@ -160,6 +181,37 @@ public class DorgeshKaanChestPlugin extends Plugin
 				break;
 			}
 		}
+
+		if (playerLocation == null || found.isEmpty())
+		{
+			inChestArea = false;
+			hopReadyAt = null;
+			return;
+		}
+
+		int nearestChestDistance = found.stream()
+			.mapToInt(state -> state.getGameObject().getWorldLocation().distanceTo(playerLocation))
+			.min()
+			.orElse(Integer.MAX_VALUE);
+
+		inChestArea = nearestChestDistance <= ACTIVE_RANGE_TILES;
+		if (!inChestArea)
+		{
+			hopReadyAt = null;
+		}
+
+		if (awaitingPostHopChestCheck && inChestArea && chestStates.size() >= 2)
+		{
+			boolean lootableChestNearby = chestStates.stream()
+				.anyMatch(state -> state.getRenderState() == ChestRenderState.LOOTABLE);
+
+			if (!lootableChestNearby)
+			{
+				allLootedNoticeUntil = Instant.now().plusMillis(ALL_LOOTED_NOTICE_MILLIS);
+			}
+
+			awaitingPostHopChestCheck = false;
+		}
 	}
 
 	@Subscribe
@@ -181,7 +233,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 			return;
 		}
 
-		if (PICK_LOCK_ATTEMPT_MESSAGE.equals(message))
+		if (inChestArea && PICK_LOCK_ATTEMPT_MESSAGE.equals(message))
 		{
 			hopReadyAt = Instant.now().plusMillis(HOP_COUNTDOWN_MILLIS);
 		}
@@ -216,6 +268,23 @@ public class DorgeshKaanChestPlugin extends Plugin
 
 	String getHopIndicatorText()
 	{
+		if (!inChestArea)
+		{
+			return null;
+		}
+
+		if (allLootedNoticeUntil != null && Instant.now().isBefore(allLootedNoticeUntil))
+		{
+			return "ALL CHESTS LOOTED";
+		}
+
+		boolean lootableChestNearby = chestStates.stream()
+			.anyMatch(state -> state.getRenderState() == ChestRenderState.LOOTABLE);
+		if (lootableChestNearby)
+		{
+			return null;
+		}
+
 		if (hopReadyAt == null)
 		{
 			return null;
