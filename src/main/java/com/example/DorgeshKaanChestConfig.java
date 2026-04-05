@@ -66,4 +66,5 @@ public interface DorgeshKaanChestConfig extends Config
 	{
 		return 65;
 	}
+
 }
