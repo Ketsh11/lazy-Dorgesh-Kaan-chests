@@ -4,6 +4,7 @@ import java.awt.Color;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Range;
 
 @ConfigGroup("dorgeshkaanchests")
@@ -65,6 +66,26 @@ public interface DorgeshKaanChestConfig extends Config
 	default int fillOpacity()
 	{
 		return 65;
+	}
+
+	@ConfigItem(
+		keyName = "hopHotkey",
+		name = "Hop hotkey",
+		description = "Press to hop when HOP NOW is active"
+	)
+	default Keybind hopHotkey()
+	{
+		return Keybind.NOT_SET;
+	}
+
+	@ConfigItem(
+		keyName = "hopFilterSource",
+		name = "Hop filter source",
+		description = "Choose internal filtering or World Hopper plugin filters"
+	)
+	default HopFilterSource hopFilterSource()
+	{
+		return HopFilterSource.INTERNAL;
 	}
 
 }
