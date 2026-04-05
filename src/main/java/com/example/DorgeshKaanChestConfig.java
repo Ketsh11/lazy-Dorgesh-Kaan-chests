@@ -88,4 +88,28 @@ public interface DorgeshKaanChestConfig extends Config
 		return HopFilterSource.INTERNAL;
 	}
 
+	@Range(
+		min = 4000,
+		max = 8000
+	)
+	@ConfigItem(
+		keyName = "hopCountdownMillis",
+		name = "Hop timer (ms)",
+		description = "Countdown duration after 'You attempt to pick the lock.'"
+	)
+	default int hopCountdownMillis()
+	{
+		return 5500;
+	}
+
+	@ConfigItem(
+		keyName = "showStatistics",
+		name = "Show statistics",
+		description = "Display session stats under the center banner"
+	)
+	default boolean showStatistics()
+	{
+		return false;
+	}
+
 }

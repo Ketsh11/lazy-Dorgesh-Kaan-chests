@@ -11,6 +11,8 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -47,9 +49,10 @@ public class DorgeshKaanChestPlugin extends Plugin
 	private static final int LOOTED_CHEST_ID = 22682;
 	private static final int OPENING_CHEST_ID = 22683;
 	private static final int ACTIVE_RANGE_TILES = 12;
-	private static final long HOP_COUNTDOWN_MILLIS = 5500L;
 	private static final long ALL_LOOTED_NOTICE_MILLIS = 3500L;
+	private static final long WORLD_LIST_WAIT_TIMEOUT_MILLIS = 4000L;
 	private static final String PICK_LOCK_ATTEMPT_MESSAGE = "You attempt to pick the lock.";
+	private static final Pattern SKILL_TOTAL_PATTERN = Pattern.compile("(\\d+)\\s*skill\\s*total", Pattern.CASE_INSENSITIVE);
 	private static final EnumSet<WorldType> DISALLOWED_WORLD_TYPES = EnumSet.of(
 		WorldType.PVP,
 		WorldType.HIGH_RISK,
@@ -88,8 +91,13 @@ public class DorgeshKaanChestPlugin extends Plugin
 	private final List<ChestState> chestStates = new ArrayList<>();
 	private Instant hopReadyAt;
 	private Instant allLootedNoticeUntil;
+	private Instant pendingHotkeyHopUntil;
 	private boolean inChestArea;
 	private boolean awaitingPostHopChestCheck;
+	private boolean pendingHotkeyHop;
+	private int sessionPicklockAttempts;
+	private int sessionHotkeyHops;
+	private int sessionAllLootedNotices;
 
 	private final HotkeyListener hopHotkeyListener = new HotkeyListener(() -> config.hopHotkey())
 	{
@@ -115,8 +123,13 @@ public class DorgeshKaanChestPlugin extends Plugin
 		chestStates.clear();
 		hopReadyAt = null;
 		allLootedNoticeUntil = null;
+		pendingHotkeyHopUntil = null;
 		inChestArea = false;
 		awaitingPostHopChestCheck = false;
+		pendingHotkeyHop = false;
+		sessionPicklockAttempts = 0;
+		sessionHotkeyHops = 0;
+		sessionAllLootedNotices = 0;
 		keyManager.unregisterKeyListener(hopHotkeyListener);
 		overlayManager.remove(overlay);
 		overlayManager.remove(timerOverlay);
@@ -140,7 +153,9 @@ public class DorgeshKaanChestPlugin extends Plugin
 		{
 			hopReadyAt = null;
 			allLootedNoticeUntil = null;
+			pendingHotkeyHopUntil = null;
 			inChestArea = false;
+			pendingHotkeyHop = false;
 		}
 	}
 
@@ -152,7 +167,23 @@ public class DorgeshKaanChestPlugin extends Plugin
 			chestStates.clear();
 			hopReadyAt = null;
 			inChestArea = false;
+			pendingHotkeyHop = false;
+			pendingHotkeyHopUntil = null;
 			return;
+		}
+
+		if (pendingHotkeyHop)
+		{
+			if (pendingHotkeyHopUntil != null && Instant.now().isAfter(pendingHotkeyHopUntil))
+			{
+				pendingHotkeyHop = false;
+				pendingHotkeyHopUntil = null;
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "World list unavailable for hotkey hop.", null);
+			}
+			else
+			{
+				tryHotkeyHop();
+			}
 		}
 
 		Scene scene = client.getScene();
@@ -249,6 +280,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 			if (!lootableChestNearby)
 			{
 				allLootedNoticeUntil = Instant.now().plusMillis(ALL_LOOTED_NOTICE_MILLIS);
+				sessionAllLootedNotices++;
 			}
 
 			awaitingPostHopChestCheck = false;
@@ -276,7 +308,8 @@ public class DorgeshKaanChestPlugin extends Plugin
 
 		if (inChestArea && PICK_LOCK_ATTEMPT_MESSAGE.equals(message))
 		{
-			hopReadyAt = Instant.now().plusMillis(HOP_COUNTDOWN_MILLIS);
+			hopReadyAt = Instant.now().plusMillis(config.hopCountdownMillis());
+			sessionPicklockAttempts++;
 		}
 	}
 
@@ -354,18 +387,38 @@ public class DorgeshKaanChestPlugin extends Plugin
 	{
 		if (!isHopNowActive())
 		{
+			pendingHotkeyHop = false;
+			pendingHotkeyHopUntil = null;
 			return;
 		}
 
 		World target = findNextHopWorld();
 		if (target == null)
 		{
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "No suitable next world found.", null);
+			World[] worlds = client.getWorldList();
+			if (worlds == null || worlds.length == 0)
+			{
+				if (!pendingHotkeyHop)
+				{
+					client.openWorldHopper();
+					pendingHotkeyHop = true;
+					pendingHotkeyHopUntil = Instant.now().plusMillis(WORLD_LIST_WAIT_TIMEOUT_MILLIS);
+					client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "Opening world hopper to load worlds...", null);
+				}
+				return;
+			}
+
+			pendingHotkeyHop = false;
+			pendingHotkeyHopUntil = null;
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "No suitable world found (filters/requirements).", null);
 			return;
 		}
 
+		pendingHotkeyHop = false;
+		pendingHotkeyHopUntil = null;
 		client.hopToWorld(target);
 		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "Hopping to world " + target.getId() + ".", null);
+		sessionHotkeyHops++;
 	}
 
 	private boolean isHopNowActive()
@@ -449,6 +502,11 @@ public class DorgeshKaanChestPlugin extends Plugin
 			return false;
 		}
 
+		if (!meetsSkillTotalRequirement(world, types))
+		{
+			return false;
+		}
+
 		for (WorldType disallowed : DISALLOWED_WORLD_TYPES)
 		{
 			if (types.contains(disallowed))
@@ -469,6 +527,11 @@ public class DorgeshKaanChestPlugin extends Plugin
 
 		EnumSet<WorldType> types = world.getTypes();
 		if (types == null)
+		{
+			return false;
+		}
+
+		if (!meetsSkillTotalRequirement(world, types))
 		{
 			return false;
 		}
@@ -653,6 +716,48 @@ public class DorgeshKaanChestPlugin extends Plugin
 		}
 
 		return false;
+	}
+
+	private boolean meetsSkillTotalRequirement(World world, Set<WorldType> worldTypes)
+	{
+		if (!worldTypes.contains(WorldType.SKILL_TOTAL))
+		{
+			return true;
+		}
+
+		String activity = world.getActivity();
+		if (activity == null)
+		{
+			return true;
+		}
+
+		Matcher matcher = SKILL_TOTAL_PATTERN.matcher(activity);
+		if (!matcher.find())
+		{
+			return true;
+		}
+
+		try
+		{
+			int requiredTotal = Integer.parseInt(matcher.group(1));
+			return client.getTotalLevel() >= requiredTotal;
+		}
+		catch (NumberFormatException ex)
+		{
+			return true;
+		}
+	}
+
+	String getStatisticsText()
+	{
+		if (!config.showStatistics())
+		{
+			return null;
+		}
+
+		return "Attempts: " + sessionPicklockAttempts
+			+ " | Hotkey hops: " + sessionHotkeyHops
+			+ " | All-looted: " + sessionAllLootedNotices;
 	}
 
 	static class ChestState

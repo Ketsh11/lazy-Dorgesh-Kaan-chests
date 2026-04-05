@@ -34,38 +34,60 @@ public class DorgeshKaanChestTimerOverlay extends Overlay
 	public Dimension render(Graphics2D graphics)
 	{
 		String text = plugin.getHopIndicatorText();
-		if (text == null)
+		String statsText = plugin.getStatisticsText();
+		if (text == null && statsText == null)
 		{
 			return null;
 		}
 
 		Font oldFont = graphics.getFont();
-		Font font = plugin.isSwitchLocked() ? FontManager.getRunescapeBoldFont() : FontManager.getRunescapeFont();
-		graphics.setFont(font.deriveFont(plugin.isSwitchLocked() ? 36f : 34f));
+		Font mainFont = plugin.isSwitchLocked() ? FontManager.getRunescapeBoldFont() : FontManager.getRunescapeFont();
+		graphics.setFont(mainFont.deriveFont(plugin.isSwitchLocked() ? 36f : 34f));
 
-		int textWidth = graphics.getFontMetrics().stringWidth(text);
-		int textHeight = graphics.getFontMetrics().getHeight();
-		int width = textWidth + (PADDING_X * 2);
-		int height = textHeight + (PADDING_Y * 2);
+		int textWidth = text != null ? graphics.getFontMetrics().stringWidth(text) : 0;
+		int textHeight = text != null ? graphics.getFontMetrics().getHeight() : 0;
 		Dimension clip = graphics.getClipBounds() != null
 			? new Dimension(graphics.getClipBounds().width, graphics.getClipBounds().height)
 			: new Dimension(765, 503);
 		int canvasWidth = clip.width;
 		int canvasHeight = clip.height;
-		int x = Math.max(8, (canvasWidth - width) / 2);
-		int y = Math.max(8, (canvasHeight - height) / 2);
+		int mainWidth = textWidth + (PADDING_X * 2);
+		int mainHeight = textHeight + (PADDING_Y * 2);
+		int mainX = Math.max(8, (canvasWidth - mainWidth) / 2);
+		int mainY = Math.max(8, (canvasHeight - mainHeight) / 2);
 
 		Color background = plugin.isSwitchLocked() ? new Color(120, 12, 12, 220) : new Color(20, 120, 35, 220);
 		Color border = plugin.isSwitchLocked() ? new Color(255, 70, 70) : new Color(130, 255, 130);
 
-		graphics.setColor(background);
-		graphics.fillRoundRect(x, y, width, height, BORDER_RADIUS, BORDER_RADIUS);
-		graphics.setColor(border);
-		graphics.drawRoundRect(x, y, width, height, BORDER_RADIUS, BORDER_RADIUS);
+		if (text != null)
+		{
+			graphics.setColor(background);
+			graphics.fillRoundRect(mainX, mainY, mainWidth, mainHeight, BORDER_RADIUS, BORDER_RADIUS);
+			graphics.setColor(border);
+			graphics.drawRoundRect(mainX, mainY, mainWidth, mainHeight, BORDER_RADIUS, BORDER_RADIUS);
 
-		int textX = x + PADDING_X;
-		int textY = y + PADDING_Y + graphics.getFontMetrics().getAscent();
-		OverlayUtil.renderTextLocation(graphics, new Point(textX, textY), text, Color.WHITE);
+			int textX = mainX + PADDING_X;
+			int textY = mainY + PADDING_Y + graphics.getFontMetrics().getAscent();
+			OverlayUtil.renderTextLocation(graphics, new Point(textX, textY), text, Color.WHITE);
+		}
+
+		if (statsText != null)
+		{
+			graphics.setFont(FontManager.getRunescapeSmallFont());
+			int statsWidth = graphics.getFontMetrics().stringWidth(statsText) + (PADDING_X * 2);
+			int statsHeight = graphics.getFontMetrics().getHeight() + (PADDING_Y * 2);
+			int statsX = Math.max(8, (canvasWidth - statsWidth) / 2);
+			int statsY = (text != null ? mainY + mainHeight + 8 : Math.max(8, (canvasHeight - statsHeight) / 2));
+
+			graphics.setColor(new Color(15, 15, 15, 210));
+			graphics.fillRoundRect(statsX, statsY, statsWidth, statsHeight, BORDER_RADIUS, BORDER_RADIUS);
+			graphics.setColor(new Color(180, 180, 180));
+			graphics.drawRoundRect(statsX, statsY, statsWidth, statsHeight, BORDER_RADIUS, BORDER_RADIUS);
+
+			int statsTextX = statsX + PADDING_X;
+			int statsTextY = statsY + PADDING_Y + graphics.getFontMetrics().getAscent();
+			OverlayUtil.renderTextLocation(graphics, new Point(statsTextX, statsTextY), statsText, Color.WHITE);
+		}
 		graphics.setFont(oldFont);
 
 		return null;
