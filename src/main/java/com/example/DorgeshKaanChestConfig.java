@@ -112,4 +112,46 @@ public interface DorgeshKaanChestConfig extends Config
 		return false;
 	}
 
+	@Range(
+		min = 0,
+		max = 700
+	)
+	@ConfigItem(
+		keyName = "defaultWorld",
+		name = "Default world",
+		description = "Cycle restart world for hotkey hopping (0 = disabled)"
+	)
+	default int defaultWorld()
+	{
+		return 0;
+	}
+
+	@Range(
+		min = 1,
+		max = 50
+	)
+	@ConfigItem(
+		keyName = "hopCycleLength",
+		name = "Hop cycle length",
+		description = "After this many hotkey hops, restart at default world"
+	)
+	default int hopCycleLength()
+	{
+		return 15;
+	}
+
+	@Range(
+		min = 60,
+		max = 900
+	)
+	@ConfigItem(
+		keyName = "chestRespawnSeconds",
+		name = "Chest respawn (s)",
+		description = "Time before returning to default world is considered worthwhile"
+	)
+	default int chestRespawnSeconds()
+	{
+		return 300;
+	}
+
 }

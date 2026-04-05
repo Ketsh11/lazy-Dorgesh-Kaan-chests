@@ -92,9 +92,11 @@ public class DorgeshKaanChestPlugin extends Plugin
 	private Instant hopReadyAt;
 	private Instant allLootedNoticeUntil;
 	private Instant pendingHotkeyHopUntil;
+	private Instant lastDefaultWorldHopAt;
 	private boolean inChestArea;
 	private boolean awaitingPostHopChestCheck;
 	private boolean pendingHotkeyHop;
+	private int cycleHopCount;
 	private int sessionPicklockAttempts;
 	private int sessionHotkeyHops;
 	private int sessionAllLootedNotices;
@@ -124,9 +126,11 @@ public class DorgeshKaanChestPlugin extends Plugin
 		hopReadyAt = null;
 		allLootedNoticeUntil = null;
 		pendingHotkeyHopUntil = null;
+		lastDefaultWorldHopAt = null;
 		inChestArea = false;
 		awaitingPostHopChestCheck = false;
 		pendingHotkeyHop = false;
+		cycleHopCount = 0;
 		sessionPicklockAttempts = 0;
 		sessionHotkeyHops = 0;
 		sessionAllLootedNotices = 0;
@@ -156,6 +160,11 @@ public class DorgeshKaanChestPlugin extends Plugin
 			pendingHotkeyHopUntil = null;
 			inChestArea = false;
 			pendingHotkeyHop = false;
+			// Keep cycle progress across world hops; only reset on true logout to login screen.
+			if (event.getGameState() == GameState.LOGIN_SCREEN)
+			{
+				cycleHopCount = 0;
+			}
 		}
 	}
 
@@ -418,6 +427,11 @@ public class DorgeshKaanChestPlugin extends Plugin
 		pendingHotkeyHopUntil = null;
 		client.hopToWorld(target);
 		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "Hopping to world " + target.getId() + ".", null);
+		if (target.getId() == config.defaultWorld())
+		{
+			lastDefaultWorldHopAt = Instant.now();
+		}
+		cycleHopCount = (cycleHopCount + 1) % Math.max(1, config.hopCycleLength());
 		sessionHotkeyHops++;
 	}
 
@@ -457,6 +471,55 @@ public class DorgeshKaanChestPlugin extends Plugin
 			return null;
 		}
 
+		World cycled = findCycledWorld(candidates);
+		if (cycled != null)
+		{
+			return cycled;
+		}
+
+		return findNextFromCurrentWorld(candidates);
+	}
+
+	private World findCycledWorld(List<World> candidates)
+	{
+		int defaultWorld = config.defaultWorld();
+		int defaultIndex = -1;
+		for (int i = 0; i < candidates.size(); i++)
+		{
+			if (candidates.get(i).getId() == defaultWorld)
+			{
+				defaultIndex = i;
+				break;
+			}
+		}
+
+		if (defaultIndex < 0)
+		{
+			return null;
+		}
+
+		int cycleLength = Math.max(1, config.hopCycleLength());
+		int effectiveStep = cycleHopCount % cycleLength;
+		int targetIndex = (defaultIndex + effectiveStep) % candidates.size();
+		World target = candidates.get(targetIndex);
+
+		// If we're due to revisit default world but respawn isn't ready yet, skip it once.
+		if (target.getId() == defaultWorld && !isDefaultWorldRespawnReady() && candidates.size() > 1)
+		{
+			target = candidates.get((targetIndex + 1) % candidates.size());
+		}
+
+		int currentWorldId = client.getWorld();
+		if (target.getId() == currentWorldId && candidates.size() > 1)
+		{
+			target = candidates.get((targetIndex + 1) % candidates.size());
+		}
+
+		return target;
+	}
+
+	private World findNextFromCurrentWorld(List<World> candidates)
+	{
 		int currentWorldId = client.getWorld();
 		for (World world : candidates)
 		{
@@ -471,6 +534,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 		{
 			return candidates.get(1);
 		}
+
 		return fallback;
 	}
 
@@ -718,6 +782,17 @@ public class DorgeshKaanChestPlugin extends Plugin
 		return false;
 	}
 
+	private boolean isDefaultWorldRespawnReady()
+	{
+		if (lastDefaultWorldHopAt == null)
+		{
+			return true;
+		}
+
+		long elapsedSeconds = Duration.between(lastDefaultWorldHopAt, Instant.now()).getSeconds();
+		return elapsedSeconds >= Math.max(1, config.chestRespawnSeconds());
+	}
+
 	private boolean meetsSkillTotalRequirement(World world, Set<WorldType> worldTypes)
 	{
 		if (!worldTypes.contains(WorldType.SKILL_TOTAL))
@@ -757,7 +832,8 @@ public class DorgeshKaanChestPlugin extends Plugin
 
 		return "Attempts: " + sessionPicklockAttempts
 			+ " | Hotkey hops: " + sessionHotkeyHops
-			+ " | All-looted: " + sessionAllLootedNotices;
+			+ " | All-looted: " + sessionAllLootedNotices
+			+ " | Cycle: " + cycleHopCount + "/" + Math.max(1, config.hopCycleLength());
 	}
 
 	static class ChestState
