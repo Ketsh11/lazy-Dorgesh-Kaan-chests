@@ -1,4 +1,8 @@
 .gradle
+.gradle-home/
+.gradle-local/
+.gradle-release/
+.gradle-release2/
 build
 .idea/
 .project
@@ -7,3 +11,6 @@ build
 nbactions.xml
 nb-configuration.xml
 nbproject/
+.tmp-client/
+.tmp-wh.txt
+.tmp-worldhopper.txt

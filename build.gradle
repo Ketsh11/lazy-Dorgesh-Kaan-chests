@@ -14,7 +14,7 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.example.DorgeshKaanChestPluginTest'
+def pluginMainClass = 'com.ketsh11.dorgeshkaanchests.DorgeshKaanChestPluginTest'
 
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
@@ -27,8 +27,23 @@ dependencies {
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
 }
 
-group = 'com.example'
+group = 'com.ketsh11.dorgeshkaanchests'
 version = '1.0-SNAPSHOT'
+
+sourceSets {
+	main {
+		java {
+			exclude '**/ExamplePlugin.java'
+			exclude '**/ExampleConfig.java'
+			exclude '**/ExampleOverlay.java'
+		}
+	}
+	test {
+		java {
+			exclude '**/ExamplePluginTest.java'
+		}
+	}
+}
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
