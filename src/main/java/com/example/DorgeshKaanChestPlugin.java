@@ -18,6 +18,7 @@ import net.runelite.api.Tile;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -71,6 +72,15 @@ public class DorgeshKaanChestPlugin extends Plugin
 		overlayManager.remove(overlay);
 		overlayManager.remove(timerOverlay);
 		log.debug("Dorgesh-Kaan chests plugin stopped");
+	}
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		if (event.getGameState() != GameState.LOGGED_IN)
+		{
+			hopReadyAt = null;
+		}
 	}
 
 	@Subscribe
