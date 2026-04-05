@@ -35,6 +35,15 @@ public class DorgeshKaanChestTimerOverlay extends Overlay
 	{
 		String text = plugin.getHopIndicatorText();
 		String statsText = plugin.getStatisticsText();
+		boolean afkSafe = plugin.getConfig().afkSafeMode();
+		boolean actionRequired = plugin.isActionRequiredIndicator();
+
+		if (afkSafe && !actionRequired)
+		{
+			text = null;
+			statsText = null;
+		}
+
 		if (text == null && statsText == null)
 		{
 			return null;
@@ -56,8 +65,13 @@ public class DorgeshKaanChestTimerOverlay extends Overlay
 		int mainX = Math.max(8, (canvasWidth - mainWidth) / 2);
 		int mainY = Math.max(8, (canvasHeight - mainHeight) / 2);
 
-		Color background = plugin.isSwitchLocked() ? new Color(120, 12, 12, 220) : new Color(20, 120, 35, 220);
-		Color border = plugin.isSwitchLocked() ? new Color(255, 70, 70) : new Color(130, 255, 130);
+		boolean flash = afkSafe && actionRequired && ((System.currentTimeMillis() / 250) % 2 == 0);
+		Color background = plugin.isSwitchLocked()
+			? (flash ? new Color(180, 20, 20, 235) : new Color(120, 12, 12, 220))
+			: (flash ? new Color(35, 170, 55, 235) : new Color(20, 120, 35, 220));
+		Color border = plugin.isSwitchLocked()
+			? (flash ? new Color(255, 220, 220) : new Color(255, 70, 70))
+			: (flash ? new Color(230, 255, 230) : new Color(130, 255, 130));
 
 		if (text != null)
 		{

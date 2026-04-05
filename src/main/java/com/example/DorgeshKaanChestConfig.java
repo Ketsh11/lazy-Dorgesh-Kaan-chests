@@ -154,4 +154,14 @@ public interface DorgeshKaanChestConfig extends Config
 		return 300;
 	}
 
+	@ConfigItem(
+		keyName = "afkSafeMode",
+		name = "AFK-safe mode",
+		description = "Only show strong alerts for HOP NOW / ALL CHESTS LOOTED, with flash + beep"
+	)
+	default boolean afkSafeMode()
+	{
+		return false;
+	}
+
 }

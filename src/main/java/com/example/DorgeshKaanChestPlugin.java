@@ -1,6 +1,7 @@
 package com.example;
 
 import com.google.inject.Provides;
+import java.awt.Toolkit;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -93,6 +94,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 	private Instant lastDefaultWorldHopAt;
 	private boolean inChestArea;
 	private boolean awaitingPostHopChestCheck;
+	private boolean actionRequiredActive;
 	private int cycleHopCount;
 	private int sessionPicklockAttempts;
 	private int sessionHotkeyHops;
@@ -125,6 +127,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 		lastDefaultWorldHopAt = null;
 		inChestArea = false;
 		awaitingPostHopChestCheck = false;
+		actionRequiredActive = false;
 		cycleHopCount = 0;
 		sessionPicklockAttempts = 0;
 		sessionHotkeyHops = 0;
@@ -153,6 +156,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 			hopReadyAt = null;
 			allLootedNoticeUntil = null;
 			inChestArea = false;
+			actionRequiredActive = false;
 			// Keep cycle progress across world hops; only reset on true logout to login screen.
 			if (event.getGameState() == GameState.LOGIN_SCREEN)
 			{
@@ -169,6 +173,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 			chestStates.clear();
 			hopReadyAt = null;
 			inChestArea = false;
+			actionRequiredActive = false;
 			return;
 		}
 
@@ -271,6 +276,8 @@ public class DorgeshKaanChestPlugin extends Plugin
 
 			awaitingPostHopChestCheck = false;
 		}
+
+		updateAfkSafeAlerts();
 	}
 
 	@Subscribe
@@ -405,8 +412,12 @@ public class DorgeshKaanChestPlugin extends Plugin
 		if (target.getId() == config.defaultWorld())
 		{
 			lastDefaultWorldHopAt = Instant.now();
+			cycleHopCount = 0;
 		}
-		cycleHopCount = (cycleHopCount + 1) % Math.max(1, config.hopCycleLength());
+		else if (config.defaultWorld() > 0)
+		{
+			cycleHopCount = Math.min(Math.max(1, config.hopCycleLength()), cycleHopCount + 1);
+		}
 		sessionHotkeyHops++;
 	}
 
@@ -446,48 +457,55 @@ public class DorgeshKaanChestPlugin extends Plugin
 			return null;
 		}
 
-		World cycled = findCycledWorld(candidates);
-		if (cycled != null)
+		World defaultCycleTarget = findDefaultCycleTarget(candidates);
+		if (defaultCycleTarget != null)
 		{
-			return cycled;
+			return defaultCycleTarget;
 		}
 
 		return findNextFromCurrentWorld(candidates);
 	}
 
-	private World findCycledWorld(List<World> candidates)
+	private World findDefaultCycleTarget(List<World> candidates)
 	{
 		int defaultWorld = config.defaultWorld();
-		int defaultIndex = -1;
-		for (int i = 0; i < candidates.size(); i++)
-		{
-			if (candidates.get(i).getId() == defaultWorld)
-			{
-				defaultIndex = i;
-				break;
-			}
-		}
-
-		if (defaultIndex < 0)
+		if (defaultWorld <= 0)
 		{
 			return null;
 		}
 
 		int cycleLength = Math.max(1, config.hopCycleLength());
-		int effectiveStep = cycleHopCount % cycleLength;
-		int targetIndex = (defaultIndex + effectiveStep) % candidates.size();
-		World target = candidates.get(targetIndex);
+		if (cycleHopCount < cycleLength)
+		{
+			return null;
+		}
+
+		World target = null;
+		for (World candidate : candidates)
+		{
+			if (candidate.getId() == defaultWorld)
+			{
+				target = candidate;
+				break;
+			}
+		}
+
+		if (target == null)
+		{
+			return null;
+		}
 
 		// If we're due to revisit default world but respawn isn't ready yet, skip it once.
-		if (target.getId() == defaultWorld && !isDefaultWorldRespawnReady() && candidates.size() > 1)
+		if (!isDefaultWorldRespawnReady())
 		{
-			target = candidates.get((targetIndex + 1) % candidates.size());
+			return null;
 		}
 
 		int currentWorldId = client.getWorld();
-		if (target.getId() == currentWorldId && candidates.size() > 1)
+		if (target.getId() == currentWorldId)
 		{
-			target = candidates.get((targetIndex + 1) % candidates.size());
+			cycleHopCount = 0;
+			return null;
 		}
 
 		return target;
@@ -809,6 +827,29 @@ public class DorgeshKaanChestPlugin extends Plugin
 			+ " | Hotkey hops: " + sessionHotkeyHops
 			+ " | All-looted: " + sessionAllLootedNotices
 			+ " | Cycle: " + cycleHopCount + "/" + Math.max(1, config.hopCycleLength());
+	}
+
+	boolean isActionRequiredIndicator()
+	{
+		String text = getHopIndicatorText();
+		return "HOP NOW".equals(text) || "ALL CHESTS LOOTED".equals(text);
+	}
+
+	private void updateAfkSafeAlerts()
+	{
+		boolean nowRequired = isActionRequiredIndicator();
+		if (config.afkSafeMode() && nowRequired && !actionRequiredActive)
+		{
+			try
+			{
+				Toolkit.getDefaultToolkit().beep();
+			}
+			catch (Exception ignored)
+			{
+				// Beep is best-effort only.
+			}
+		}
+		actionRequiredActive = nowRequired;
 	}
 
 	static class ChestState
