@@ -50,7 +50,6 @@ public class DorgeshKaanChestPlugin extends Plugin
 	private static final int OPENING_CHEST_ID = 22683;
 	private static final int ACTIVE_RANGE_TILES = 12;
 	private static final long ALL_LOOTED_NOTICE_MILLIS = 3500L;
-	private static final long WORLD_LIST_WAIT_TIMEOUT_MILLIS = 4000L;
 	private static final String PICK_LOCK_ATTEMPT_MESSAGE = "You attempt to pick the lock.";
 	private static final Pattern SKILL_TOTAL_PATTERN = Pattern.compile("(\\d+)\\s*skill\\s*total", Pattern.CASE_INSENSITIVE);
 	private static final EnumSet<WorldType> DISALLOWED_WORLD_TYPES = EnumSet.of(
@@ -91,11 +90,9 @@ public class DorgeshKaanChestPlugin extends Plugin
 	private final List<ChestState> chestStates = new ArrayList<>();
 	private Instant hopReadyAt;
 	private Instant allLootedNoticeUntil;
-	private Instant pendingHotkeyHopUntil;
 	private Instant lastDefaultWorldHopAt;
 	private boolean inChestArea;
 	private boolean awaitingPostHopChestCheck;
-	private boolean pendingHotkeyHop;
 	private int cycleHopCount;
 	private int sessionPicklockAttempts;
 	private int sessionHotkeyHops;
@@ -106,7 +103,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 		@Override
 		public void hotkeyPressed()
 		{
-			clientThread.invoke(DorgeshKaanChestPlugin.this::tryHotkeyHop);
+			clientThread.invoke(DorgeshKaanChestPlugin.this::beginHotkeyHopAttempt);
 		}
 	};
 
@@ -125,11 +122,9 @@ public class DorgeshKaanChestPlugin extends Plugin
 		chestStates.clear();
 		hopReadyAt = null;
 		allLootedNoticeUntil = null;
-		pendingHotkeyHopUntil = null;
 		lastDefaultWorldHopAt = null;
 		inChestArea = false;
 		awaitingPostHopChestCheck = false;
-		pendingHotkeyHop = false;
 		cycleHopCount = 0;
 		sessionPicklockAttempts = 0;
 		sessionHotkeyHops = 0;
@@ -157,9 +152,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 		{
 			hopReadyAt = null;
 			allLootedNoticeUntil = null;
-			pendingHotkeyHopUntil = null;
 			inChestArea = false;
-			pendingHotkeyHop = false;
 			// Keep cycle progress across world hops; only reset on true logout to login screen.
 			if (event.getGameState() == GameState.LOGIN_SCREEN)
 			{
@@ -176,23 +169,7 @@ public class DorgeshKaanChestPlugin extends Plugin
 			chestStates.clear();
 			hopReadyAt = null;
 			inChestArea = false;
-			pendingHotkeyHop = false;
-			pendingHotkeyHopUntil = null;
 			return;
-		}
-
-		if (pendingHotkeyHop)
-		{
-			if (pendingHotkeyHopUntil != null && Instant.now().isAfter(pendingHotkeyHopUntil))
-			{
-				pendingHotkeyHop = false;
-				pendingHotkeyHopUntil = null;
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "World list unavailable for hotkey hop.", null);
-			}
-			else
-			{
-				tryHotkeyHop();
-			}
 		}
 
 		Scene scene = client.getScene();
@@ -379,6 +356,12 @@ public class DorgeshKaanChestPlugin extends Plugin
 			return "HOP IN " + seconds + "s";
 		}
 
+		World[] worlds = client.getWorldList();
+		if (worlds == null || worlds.length == 0)
+		{
+			return "OPEN THE WORLD SWITCHER PANEL TO ENABLE AUTO-HOP";
+		}
+
 		return "HOP NOW";
 	}
 
@@ -392,39 +375,31 @@ public class DorgeshKaanChestPlugin extends Plugin
 		return (int) Math.max(0, (millis + 999) / 1000);
 	}
 
-	private void tryHotkeyHop()
+	private void beginHotkeyHopAttempt()
 	{
 		if (!isHopNowActive())
 		{
-			pendingHotkeyHop = false;
-			pendingHotkeyHopUntil = null;
+			return;
+		}
+		World[] worlds = client.getWorldList();
+		if (worlds == null || worlds.length == 0)
+		{
+			client.addChatMessage(
+				ChatMessageType.GAMEMESSAGE,
+				"",
+				"Open the World Hopper panel once before using hop hotkey.",
+				null
+			);
 			return;
 		}
 
 		World target = findNextHopWorld();
 		if (target == null)
 		{
-			World[] worlds = client.getWorldList();
-			if (worlds == null || worlds.length == 0)
-			{
-				if (!pendingHotkeyHop)
-				{
-					client.openWorldHopper();
-					pendingHotkeyHop = true;
-					pendingHotkeyHopUntil = Instant.now().plusMillis(WORLD_LIST_WAIT_TIMEOUT_MILLIS);
-					client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "Opening world hopper to load worlds...", null);
-				}
-				return;
-			}
-
-			pendingHotkeyHop = false;
-			pendingHotkeyHopUntil = null;
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "No suitable world found (filters/requirements).", null);
 			return;
 		}
 
-		pendingHotkeyHop = false;
-		pendingHotkeyHopUntil = null;
 		client.hopToWorld(target);
 		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "Hopping to world " + target.getId() + ".", null);
 		if (target.getId() == config.defaultWorld())
