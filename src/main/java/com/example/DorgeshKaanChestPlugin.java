@@ -1,4 +1,4 @@
-package com.example;
+package com.ketsh11.dorgeshkaanchests;
 
 import com.google.inject.Provides;
 import java.awt.Toolkit;

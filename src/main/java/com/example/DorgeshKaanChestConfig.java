@@ -1,4 +1,4 @@
-package com.example;
+package com.ketsh11.dorgeshkaanchests;
 
 import java.awt.Color;
 import net.runelite.client.config.Config;
