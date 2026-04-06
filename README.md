@@ -6,6 +6,10 @@ This plugin helps optimize Dorgesh-Kaan chest looting by:
 - supporting hotkey-based world hopping with filtering,
 - tracking optional session stats.
 
+## Video
+
+https://youtu.be/LcTiQhewAw0
+
 ## Core Behavior
 
 ### Chest highlighting
