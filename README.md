@@ -8,7 +8,7 @@ This plugin helps optimize Dorgesh-Kaan chest looting by:
 
 ## Video
 
-https://youtu.be/LcTiQhewAw0
+[![Watch the video](https://img.youtube.com/vi/LcTiQhewAw0/hqdefault.jpg)](https://youtu.be/LcTiQhewAw0)
 
 ## Core Behavior
 
